@@ -684,7 +684,7 @@ int scanhash_scrypt(int thr_id, unsigned char *pdata, unsigned char *scratchbuf,
 	unsigned char tmp_hash[32];
 	uint32_t *nonce = (uint32_t *)(data + 64 + 12);
 	uint32_t n = 0;
-	uint32_t Htarg = *(uint32_t *)(ptarget + 28);
+	uint32_t Htarg = le32dec(ptarget + 28);
 	int i;
 
 	work_restart[thr_id].restart = 0;
@@ -694,11 +694,11 @@ int scanhash_scrypt(int thr_id, unsigned char *pdata, unsigned char *scratchbuf,
 	
 	while(1) {
 		n++;
-		*nonce = n;
+		le32enc(nonce, n);
 		scrypt_1024_1_1_256_sp(data, tmp_hash, scratchbuf);
 
-		if (*(uint32_t *)(tmp_hash+28) <= Htarg) {
-			*(uint32_t *)(pdata + 64 + 12) = swab32(n);
+		if (le32dec(tmp_hash+28) <= Htarg) {
+			be32enc(pdata + 64 + 12, n);
 			*hashes_done = n;
 			return true;
 		}
