@@ -475,9 +475,9 @@ static void smix(uint8_t *, size_t, uint64_t, uint32_t *, uint32_t *);
 static void
 blkcpy(void * dest, void * src, size_t len)
 {
-	size_t * D = dest;
-	size_t * S = src;
-	size_t L = len / sizeof(size_t);
+	uint64_t * D = dest;
+	uint64_t * S = src;
+	size_t L = len / sizeof(uint64_t);
 	size_t i;
 
 	for (i = 0; i < L; i++)
@@ -487,9 +487,9 @@ blkcpy(void * dest, void * src, size_t len)
 static void
 blkxor(void * dest, void * src, size_t len)
 {
-	size_t * D = dest;
-	size_t * S = src;
-	size_t L = len / sizeof(size_t);
+	uint64_t * D = dest;
+	uint64_t * S = src;
+	size_t L = len / sizeof(uint64_t);
 	size_t i;
 
 	for (i = 0; i < L; i++)
