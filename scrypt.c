@@ -464,13 +464,7 @@ PBKDF2_SHA256(const uint8_t * passwd, size_t passwdlen, const uint8_t * salt,
 	memset(&PShctx, 0, sizeof(HMAC_SHA256_CTX));
 }
 
-
-static void blkcpy(void *, void *, size_t);
-static void blkxor(void *, void *, size_t);
-static void salsa20_8(uint32_t[16]);
-static void blockmix_salsa8(uint32_t *, uint32_t *, uint32_t *, size_t);
-static uint64_t integerify(void *, size_t);
-static void smix(uint8_t *, size_t, uint64_t, uint32_t *, uint32_t *);
+/*****************************************************************************/
 
 static void
 blkcpy(void * dest, void * src, size_t len)
@@ -547,43 +541,15 @@ salsa20_8(uint32_t B[16])
  * temporary space X must be 64 bytes.
  */
 static void
-blockmix_salsa8(uint32_t * Bin, uint32_t * Bout, uint32_t * X, size_t r)
+blockmix_salsa8(uint32_t * Bin, uint32_t * Bout, uint32_t * X)
 {
-	size_t i;
-
-	/* 1: X <-- B_{2r - 1} */
-	blkcpy(X, &Bin[(2 * r - 1) * 16], 64);
-
-	/* 2: for i = 0 to 2r - 1 do */
-	for (i = 0; i < 2 * r; i += 2) {
-		/* 3: X <-- H(X \xor B_i) */
-		blkxor(X, &Bin[i * 16], 64);
-		salsa20_8(X);
-
-		/* 4: Y_i <-- X */
-		/* 6: B' <-- (Y_0, Y_2 ... Y_{2r-2}, Y_1, Y_3 ... Y_{2r-1}) */
-		blkcpy(&Bout[i * 8], X, 64);
-
-		/* 3: X <-- H(X \xor B_i) */
-		blkxor(X, &Bin[i * 16 + 16], 64);
-		salsa20_8(X);
-
-		/* 4: Y_i <-- X */
-		/* 6: B' <-- (Y_0, Y_2 ... Y_{2r-2}, Y_1, Y_3 ... Y_{2r-1}) */
-		blkcpy(&Bout[i * 8 + r * 16], X, 64);
-	}
-}
-
-/**
- * integerify(B, r):
- * Return the result of parsing B_{2r-1} as a little-endian integer.
- */
-static uint64_t
-integerify(void * B, size_t r)
-{
-	uint32_t * X = (void *)((uintptr_t)(B) + (2 * r - 1) * 64);
-
-	return (((uint64_t)(X[1]) << 32) + X[0]);
+	blkcpy(X, &Bin[16], 64);
+	blkxor(X, &Bin[0], 64);
+	salsa20_8(X);
+	blkcpy(&Bout[0], X, 64);
+	blkxor(X, &Bin[16], 64);
+	salsa20_8(X);
+	blkcpy(&Bout[16], X, 64);
 }
 
 /**
@@ -595,61 +561,56 @@ integerify(void * B, size_t r)
  * multiple of 64 bytes.
  */
 static void
-smix(uint8_t * B, size_t r, uint64_t N, uint32_t * V, uint32_t * XY)
+smix(uint8_t * B, uint64_t N, uint32_t * V, uint32_t * XY)
 {
 	uint32_t * X = XY;
-	uint32_t * Y = &XY[32 * r];
-	uint32_t * Z = &XY[64 * r];
+	uint32_t * Y = &XY[32];
+	uint32_t * Z = &XY[64];
 	uint64_t i;
 	uint64_t j;
-	size_t k;
 
 	/* 1: X <-- B */
-	for (k = 0; k < 2 * r; k++) {
-		for (i = 0; i < 16; i++) {
-			X[k * 16 + i] =
-			    le32dec(&B[(k * 16 + (i * 5 % 16)) * 4]);
-		}
+	for (i = 0; i < 16; i++) {
+		X[i]      = le32dec(&B[(i * 5 % 16) * 4]);
+		X[16 + i] = le32dec(&B[(16 + (i * 5 % 16)) * 4]);
 	}
 
 	/* 2: for i = 0 to N - 1 do */
 	for (i = 0; i < N; i += 2) {
 		/* 3: V_i <-- X */
-		blkcpy(&V[i * (32 * r)], X, 128 * r);
+		blkcpy(&V[i * 32], X, 128);
 
 		/* 4: X <-- H(X) */
-		blockmix_salsa8(X, Y, Z, r);
+		blockmix_salsa8(X, Y, Z);
 
 		/* 3: V_i <-- X */
-		blkcpy(&V[(i + 1) * (32 * r)], Y, 128 * r);
+		blkcpy(&V[(i + 1) * 32], Y, 128);
 
 		/* 4: X <-- H(X) */
-		blockmix_salsa8(Y, X, Z, r);
+		blockmix_salsa8(Y, X, Z);
 	}
 
 	/* 6: for i = 0 to N - 1 do */
 	for (i = 0; i < N; i += 2) {
 		/* 7: j <-- Integerify(X) mod N */
-		j = integerify(X, r) & (N - 1);
+		j = X[16] & (N - 1);
 
 		/* 8: X <-- H(X \xor V_j) */
-		blkxor(X, &V[j * (32 * r)], 128 * r);
-		blockmix_salsa8(X, Y, Z, r);
+		blkxor(X, &V[j * 32], 128);
+		blockmix_salsa8(X, Y, Z);
 
 		/* 7: j <-- Integerify(X) mod N */
-		j = integerify(Y, r) & (N - 1);
+		j = Y[16] & (N - 1);
 
 		/* 8: X <-- H(X \xor V_j) */
-		blkxor(Y, &V[j * (32 * r)], 128 * r);
-		blockmix_salsa8(Y, X, Z, r);
+		blkxor(Y, &V[j * 32], 128);
+		blockmix_salsa8(Y, X, Z);
 	}
 
 	/* 10: B' <-- X */
-	for (k = 0; k < 2 * r; k++) {
-		for (i = 0; i < 16; i++) {
-			le32enc(&B[(k * 16 + (i * 5 % 16)) * 4],
-			    X[k * 16 + i]);
-		}
+	for (i = 0; i < 16; i++) {
+		le32enc(&B[(i * 5 % 16) * 4], X[i]);
+		le32enc(&B[(16 + (i * 5 % 16)) * 4], X[16 + i]);
 	}
 }
 
@@ -684,7 +645,7 @@ static void scrypt_1024_1_1_256_sp(const char* input, char* output, char* scratc
 #elif defined(__i386__)
 	x86_scrypt_core(B, XY);
 #else
-	smix(B, r, N, V, XY);
+	smix(B, N, V, XY);
 #endif
 
 	/* 5: DK <-- PBKDF2(P, B, 1, dkLen) */
