@@ -466,6 +466,98 @@ PBKDF2_SHA256(const uint8_t * passwd, size_t passwdlen, const uint8_t * salt,
 
 /*****************************************************************************/
 
+#ifdef __ALTIVEC__
+
+#include <altivec.h>
+#include <vec_types.h>
+
+static void
+blkcpy(void * dest, void * src, size_t len)
+{
+	vec_uint4 * D = dest;
+	vec_uint4 * S = src;
+	size_t L = len / sizeof(vec_uint4);
+	size_t i;
+
+	for (i = 0; i < L; i++)
+		D[i] = S[i];
+}
+
+static void
+blkxor(void * dest, void * src, size_t len)
+{
+	vec_uint4 * D = dest;
+	vec_uint4 * S = src;
+	size_t L = len / sizeof(vec_uint4);
+	size_t i;
+
+	for (i = 0; i < L; i++)
+		D[i] = vec_xor(D[i], S[i]);
+}
+
+/**
+ * salsa20_8(B):
+ * Apply the salsa20/8 core to the provided block.
+ */
+static void
+salsa20_8(uint32_t B32[16])
+{
+	vec_uint4 * B = (vec_uint4 *)&B32[0];
+	vec_uint4 X0, X1, X2, X3;
+	vec_uint4 T;
+	size_t i;
+
+	const vec_uchar16 perm_0x93 = { 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 };
+	const vec_uchar16 perm_0x4E = { 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7 };
+	const vec_uchar16 perm_0x39 = { 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3 };
+
+	X0 = B[0];
+	X1 = B[1];
+	X2 = B[2];
+	X3 = B[3];
+
+	for (i = 0; i < 8; i += 2) {
+#define R(a,b) vec_rl(a, vec_splats((uint32_t)b))
+		/* Operate on "columns". */
+		T  = vec_add(X0, X3);
+		X1 = vec_xor(X1, R(T, 7));
+		T  = vec_add(X1, X0);
+		X2 = vec_xor(X2, R(T, 9));
+		T  = vec_add(X2, X1);
+		X3 = vec_xor(X3, R(T, 13));
+		T  = vec_add(X3, X2);
+		X0 = vec_xor(X0, R(T, 18));
+
+		/* Rearrange data. */
+		X1 = vec_perm(X1, X1, perm_0x93);
+		X2 = vec_perm(X2, X2, perm_0x4E);
+		X3 = vec_perm(X3, X3, perm_0x39);
+
+		/* Operate on "rows". */
+		T  = vec_add(X0, X1);
+		X3 = vec_xor(X3, R(T, 7));
+		T  = vec_add(X3, X0);
+		X2 = vec_xor(X2, R(T, 9));
+		T  = vec_add(X2, X3);
+		X1 = vec_xor(X1, R(T, 13));
+		T  = vec_add(X1, X2);
+		X0 = vec_xor(X0, R(T, 18));
+
+		/* Rearrange data. */
+		X1 = vec_perm(X1, X1, perm_0x39);
+		X2 = vec_perm(X2, X2, perm_0x4E);
+		X3 = vec_perm(X3, X3, perm_0x93);
+#undef R
+	}
+
+	B[0] = vec_add(B[0], X0);
+	B[1] = vec_add(B[1], X1);
+	B[2] = vec_add(B[2], X2);
+	B[3] = vec_add(B[3], X3);
+}
+
+#else
+
 static void
 blkcpy(void * dest, void * src, size_t len)
 {
@@ -533,6 +625,8 @@ salsa20_8(uint32_t B[16])
 	for (i = 0; i < 16; i++)
 		B[i] += x[i];
 }
+
+#endif
 
 /**
  * blockmix_salsa8(Bin, Bout, X, r):
