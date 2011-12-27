@@ -102,6 +102,7 @@ static const bool opt_time = true;
 static enum sha256_algos opt_algo = ALGO_SCRYPT;
 static int opt_n_threads;
 static int num_processors;
+static int num_cell_spu; /* the number of SPU cores for Cell/BE (normally 6) */
 static char *rpc_url;
 static char *rpc_userpass;
 static char *rpc_user, *rpc_pass;
@@ -511,6 +512,14 @@ err_out:
 	return false;
 }
 
+#ifdef HAVE_CELL_SPU
+#include "scrypt-cell-spu.h"
+/* Each SPU core is processing 8 hashes as once and needs 8x memory */
+#define SCRATCHBUF_SIZE (131583 * 8)
+#else
+#define SCRATCHBUF_SIZE (131583 * 2)
+#endif
+
 static void *miner_thread(void *userdata)
 {
 	struct thr_info *mythr = userdata;
@@ -531,7 +540,7 @@ static void *miner_thread(void *userdata)
 	
 	if (opt_algo == ALGO_SCRYPT)
 	{
-		scratchbuf = malloc(2 * 131583);
+		scratchbuf = malloc(SCRATCHBUF_SIZE);
 		max_nonce = 0xffff;
 	}
 
@@ -556,6 +565,24 @@ static void *miner_thread(void *userdata)
 		/* scan nonces for a proof-of-work hash */
 		switch (opt_algo) {
 		case ALGO_SCRYPT:
+#ifdef HAVE_CELL_SPU
+			if (mythr->spe_context) {
+				scanhash_spu_args *argp = (scanhash_spu_args *)
+					(((uintptr_t)scratchbuf + 127) & ~(uintptr_t)127);
+				spe_stop_info_t stop_info;
+				unsigned int entry = SPE_DEFAULT_ENTRY;
+				memcpy(argp->data, work.data, sizeof(work.data));
+				memcpy(argp->target, work.target, sizeof(work.target));
+				argp->max_nonce = max_nonce;
+				work_restart[thr_id].restart = 0;
+				spe_context_run(mythr->spe_context, &entry, 0, argp,
+						(void *)&work_restart[thr_id].restart, &stop_info);
+				hashes_done = argp->hashes_done;
+				memcpy(work.data, argp->data, sizeof(work.data));
+				rc = stop_info.result.spe_exit_code;
+				break;
+			}
+#endif
 			rc = scanhash_scrypt(thr_id, work.data, scratchbuf,
 			                     work.target, max_nonce, &hashes_done);
 			break;
@@ -790,13 +817,20 @@ static void parse_arg (int key, char *arg)
 		show_usage();
 	}
 
+#ifdef HAVE_CELL_SPU
+	num_cell_spu = spe_cpu_info_get(SPE_COUNT_USABLE_SPES, -1);
+#endif
 #ifdef WIN32
 	if (!opt_n_threads)
 		opt_n_threads = 1;
 #else
 	num_processors = sysconf(_SC_NPROCESSORS_ONLN);
-	if (!opt_n_threads)
+	if (!opt_n_threads) {
 		opt_n_threads = num_processors;
+		/* If we have SPU cores, start additional thread for each */
+		if (num_cell_spu > 0)
+			opt_n_threads += num_cell_spu;
+	}
 #endif /* !WIN32 */
 }
 
@@ -922,7 +956,13 @@ int main (int argc, char *argv[])
 		thr->q = tq_new();
 		if (!thr->q)
 			return 1;
-
+#ifdef HAVE_CELL_SPU
+		/* The first 'num_cell_spu' threads are allocated for SPU */
+		if (i < num_cell_spu) {
+			thr->spe_context = spe_context_create(0, NULL);
+			spe_program_load(thr->spe_context, &scrypt_spu);
+		}
+#endif
 		if (unlikely(pthread_create(&thr->pth, NULL, miner_thread, thr))) {
 			applog(LOG_ERR, "thread %d create failed", i);
 			return 1;

@@ -32,6 +32,26 @@ case $target in
     have_win32=false
     PTHREAD_FLAGS="-pthread"
     ;;
+  powerpc*)
+    have_x86_64=false
+    have_win32=false
+    PTHREAD_FLAGS="-pthread"
+    AC_CHECK_LIB(spe2, spe_context_create, [SPE2_LIBS=-lspe2
+                                            have_cell_spu=true])
+    AC_CHECK_PROGS(SPU_ELF_GCC,[spu-elf-gcc spu-gcc], "false")
+    AC_CHECK_PROGS(EMBEDSPU,[embedspu ppu-embedspu], "false")
+
+    if test x$have_cell_spu = xtrue; then
+      if test x$SPU_ELF_GCC = xfalse; then
+        echo "Can't find spu-elf-gcc or spu-gcc tool"
+        exit 1
+      fi
+      if test x$EMBEDSPU = xfalse; then
+        echo "Can't find embedspu or ppu-embedspu tool"
+        exit 1
+      fi
+    fi
+    ;;
   *)
     have_x86_64=false
     have_win32=false
@@ -39,13 +59,17 @@ case $target in
     ;;
 esac
 
-
 AC_CHECK_LIB(jansson, json_loads, request_jansson=false, request_jansson=true)
 AC_CHECK_LIB(pthread, pthread_create, PTHREAD_LIBS=-lpthread)
 
 AM_CONDITIONAL([WANT_JANSSON], [test x$request_jansson = xtrue])
 AM_CONDITIONAL([HAVE_WINDOWS], [test x$have_win32 = xtrue])
 AM_CONDITIONAL([HAVE_x86_64], [test x$have_x86_64 = xtrue])
+AM_CONDITIONAL([HAVE_CELL_SPU], [test x$have_cell_spu = xtrue])
+
+if test x$have_cell_spu = xtrue ; then
+	AC_DEFINE([HAVE_CELL_SPU], [1], [Can use Cell/BE acceleration])
+fi
 
 if test x$request_jansson = xtrue
 then
@@ -62,6 +86,7 @@ LIBCURL_CHECK_CONFIG(, 7.10.1, ,
 AC_SUBST(JANSSON_LIBS)
 AC_SUBST(PTHREAD_FLAGS)
 AC_SUBST(PTHREAD_LIBS)
+AC_SUBST(SPE2_LIBS)
 
 AC_CONFIG_FILES([
 	Makefile
