@@ -531,7 +531,7 @@ static void *miner_thread(void *userdata)
 	
 	if (opt_algo == ALGO_SCRYPT)
 	{
-		scratchbuf = malloc(131583);
+		scratchbuf = malloc(2 * 131583);
 		max_nonce = 0xffff;
 	}
 

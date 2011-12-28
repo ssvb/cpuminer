@@ -35,6 +35,7 @@
 #include <string.h>
 
 #include "sha256-helpers.h"
+#include "scrypt-simd-helpers.h"
 
 static void blkcpy(void *, void *, size_t);
 static void blkxor(void *, void *, size_t);
@@ -219,7 +220,7 @@ smix(uint8_t * B, size_t r, uint64_t N, uint32_t * V, uint32_t * XY)
 /* cpu and memory intensive function to transform a 80 byte buffer into a 32 byte output
    scratchpad size needs to be at least 63 + (128 * r * p) + (256 * r + 64) + (128 * r * N) bytes
  */
-static void scrypt_1024_1_1_256_sp(const char* input, char* output, char* scratchpad)
+static void scrypt_1024_1_1_256_sp1(const char* input, char* output, char* scratchpad)
 {
 	uint8_t * B;
 	uint32_t * V;
@@ -237,17 +238,21 @@ static void scrypt_1024_1_1_256_sp(const char* input, char* output, char* scratc
 	/* 1: (B_0 ... B_{p-1}) <-- PBKDF2(P, S, 1, p * MFLen) */
 	PBKDF2_SHA256((const uint8_t*)input, 80, (const uint8_t*)input, 80, 1, B, p * 128 * r);
 
+#ifdef HAVE_SCRYPT_SIMD_HELPERS
+	scrypt_simd_core1(B, XY);
+#else
 	/* 2: for i = 0 to p - 1 do */
 	for (i = 0; i < p; i++) {
 		/* 3: B_i <-- MF(B_i, N) */
 		smix(&B[i * 128 * r], r, N, V, XY);
 	}
+#endif
 
 	/* 5: DK <-- PBKDF2(P, B, 1, dkLen) */
 	PBKDF2_SHA256((const uint8_t*)input, 80, B, p * 128 * r, 1, (uint8_t*)output, 32);
 }
 
-int scanhash_scrypt(int thr_id, unsigned char *pdata, unsigned char *scratchbuf,
+int scanhash_scrypt1(int thr_id, unsigned char *pdata, unsigned char *scratchbuf,
 	const unsigned char *ptarget,
 	uint32_t max_nonce, unsigned long *hashes_done)
 {
@@ -266,7 +271,7 @@ int scanhash_scrypt(int thr_id, unsigned char *pdata, unsigned char *scratchbuf,
 	while(1) {
 		n++;
 		le32enc(nonce, n);
-		scrypt_1024_1_1_256_sp(data, tmp_hash, scratchbuf);
+		scrypt_1024_1_1_256_sp1(data, tmp_hash, scratchbuf);
 
 		if (le32dec(tmp_hash+28) <= Htarg) {
 			be32enc(pdata + 64 + 12, n);
@@ -282,3 +287,105 @@ int scanhash_scrypt(int thr_id, unsigned char *pdata, unsigned char *scratchbuf,
 	return false;
 }
 
+#ifdef HAVE_SCRYPT_SIMD_HELPERS
+
+static void
+scrypt_1024_1_1_256_sp2(const unsigned char * input1,
+                        unsigned char       * output1,
+                        const unsigned char * input2,
+                        unsigned char       * output2,
+                        unsigned char       * scratchpad)
+{
+	uint8_t * B1, * B2;
+	uint8_t * V;
+
+	const uint32_t N = 1024;
+	const uint32_t r = 1;
+	const uint32_t p = 1;
+
+	B1 = (uint8_t *)(((uintptr_t)(scratchpad) + 63) & ~ (uintptr_t)(63));
+	B2 = B1 + 128;
+	V  = B2 + 128;
+
+	/* 1: (B_0 ... B_{p-1}) <-- PBKDF2(P, S, 1, p * MFLen) */
+	PBKDF2_SHA256((const uint8_t*)input1, 80, (const uint8_t*)input1, 80, 1, B1, p * 128 * r);
+	/* 1: (B_0 ... B_{p-1}) <-- PBKDF2(P, S, 1, p * MFLen) */
+	PBKDF2_SHA256((const uint8_t*)input2, 80, (const uint8_t*)input2, 80, 1, B2, p * 128 * r);
+
+	scrypt_simd_core2(B1, V);
+
+	/* 5: DK <-- PBKDF2(P, B, 1, dkLen) */
+	PBKDF2_SHA256((const uint8_t*)input1, 80, B1, p * 128 * r, 1, (uint8_t*)output1, 32);
+	/* 5: DK <-- PBKDF2(P, B, 1, dkLen) */
+	PBKDF2_SHA256((const uint8_t*)input2, 80, B2, p * 128 * r, 1, (uint8_t*)output2, 32);
+}
+
+int scanhash_scrypt2(int thr_id, unsigned char *pdata, unsigned char *scratchbuf,
+	const unsigned char *ptarget,
+	uint32_t max_nonce, unsigned long *hashes_done)
+{
+	unsigned char data1[80];
+	unsigned char tmp_hash1[32];
+	unsigned char data2[80];
+	unsigned char tmp_hash2[32];
+	uint32_t *nonce1 = (uint32_t *)(data1 + 64 + 12);
+	uint32_t *nonce2 = (uint32_t *)(data2 + 64 + 12);
+	uint32_t n = 0;
+	uint32_t Htarg = le32dec(ptarget + 28);
+	int i;
+
+	work_restart[thr_id].restart = 0;
+	
+	for (i = 0; i < 80/4; i++) {
+		((uint32_t *)data1)[i] = swab32(((uint32_t *)pdata)[i]);
+		((uint32_t *)data2)[i] = swab32(((uint32_t *)pdata)[i]);
+	}
+	
+	while(1) {
+		le32enc(nonce1, n + 1);
+		le32enc(nonce2, n + 2);
+		scrypt_1024_1_1_256_sp2(data1, tmp_hash1, data2, tmp_hash2, scratchbuf);
+
+		if (le32dec(tmp_hash1+28) <= Htarg) {
+			be32enc(pdata + 64 + 12, n + 1);
+			*hashes_done = n + 1;
+			return true;
+		}
+
+		if (le32dec(tmp_hash2+28) <= Htarg && n + 2 <= max_nonce) {
+			be32enc(pdata + 64 + 12, n + 2);
+			*hashes_done = n + 2;
+			return true;
+		}
+
+		n += 2;
+
+		if (n >= max_nonce) {
+			*hashes_done = max_nonce;
+			break;
+		}
+
+		if (work_restart[thr_id].restart) {
+			*hashes_done = n;
+			break;
+		}
+	}
+	return false;
+}
+
+#endif
+
+int scanhash_scrypt(int thr_id, unsigned char *pdata, unsigned char *scratchbuf,
+	const unsigned char *ptarget,
+	uint32_t max_nonce, unsigned long *hashes_done)
+{
+	/*
+	 * TODO: maybe add a command line option or run benchmarks at start
+	 * to select the fastest implementation?
+	 */
+#ifdef HAVE_SCRYPT_SIMD_HELPERS
+	return scanhash_scrypt2(thr_id, pdata, scratchbuf, ptarget, max_nonce, hashes_done);
+#else
+	return scanhash_scrypt1(thr_id, pdata, scratchbuf, ptarget, max_nonce, hashes_done);
+#endif
+}
