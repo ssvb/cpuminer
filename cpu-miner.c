@@ -574,6 +574,7 @@ static void *miner_thread(void *userdata)
 				memcpy(argp->data, work.data, sizeof(work.data));
 				memcpy(argp->target, work.target, sizeof(work.target));
 				argp->max_nonce = max_nonce;
+				argp->hashes_done = 0;
 				work_restart[thr_id].restart = 0;
 				spe_context_run(mythr->spe_context, &entry, 0, argp,
 						(void *)&work_restart[thr_id].restart, &stop_info);
