@@ -157,7 +157,7 @@ salsa20_8_xor4(uint32x4 * __restrict B, const uint32x4 * __restrict Bx,
 }
 
 static void
-scrypt_spu_core8(uint8_t *databuf, uint64_t scratch)
+scrypt_spu_core8(uint32_t *databuf32, uint64_t scratch)
 {
 	static mfc_list_element_t dma_list[8] __attribute__((aligned(128)));
 	static XY X[8] __attribute__((aligned(128)));
@@ -186,22 +186,22 @@ scrypt_spu_core8(uint8_t *databuf, uint64_t scratch)
 
 	/* 1: X <-- B */
 	for (i = 0; i < 16; i++) {
-		XA->w[i]      = le32dec(&databuf[0 * 128 + (i * 5 % 16) * 4]);
-		XA->w[16 + i] = le32dec(&databuf[0 * 128 + (16 + (i * 5 % 16)) * 4]);
-		XB->w[i]      = le32dec(&databuf[1 * 128 + (i * 5 % 16) * 4]);
-		XB->w[16 + i] = le32dec(&databuf[1 * 128 + (16 + (i * 5 % 16)) * 4]);
-		XC->w[i]      = le32dec(&databuf[2 * 128 + (i * 5 % 16) * 4]);
-		XC->w[16 + i] = le32dec(&databuf[2 * 128 + (16 + (i * 5 % 16)) * 4]);
-		XD->w[i]      = le32dec(&databuf[3 * 128 + (i * 5 % 16) * 4]);
-		XD->w[16 + i] = le32dec(&databuf[3 * 128 + (16 + (i * 5 % 16)) * 4]);
-		XE->w[i]      = le32dec(&databuf[4 * 128 + (i * 5 % 16) * 4]);
-		XE->w[16 + i] = le32dec(&databuf[4 * 128 + (16 + (i * 5 % 16)) * 4]);
-		XF->w[i]      = le32dec(&databuf[5 * 128 + (i * 5 % 16) * 4]);
-		XF->w[16 + i] = le32dec(&databuf[5 * 128 + (16 + (i * 5 % 16)) * 4]);
-		XG->w[i]      = le32dec(&databuf[6 * 128 + (i * 5 % 16) * 4]);
-		XG->w[16 + i] = le32dec(&databuf[6 * 128 + (16 + (i * 5 % 16)) * 4]);
-		XH->w[i]      = le32dec(&databuf[7 * 128 + (i * 5 % 16) * 4]);
-		XH->w[16 + i] = le32dec(&databuf[7 * 128 + (16 + (i * 5 % 16)) * 4]);
+		XA->w[i]      = databuf32[0 * 32 + (i * 5 % 16)];
+		XA->w[16 + i] = databuf32[0 * 32 + (16 + (i * 5 % 16))];
+		XB->w[i]      = databuf32[1 * 32 + (i * 5 % 16)];
+		XB->w[16 + i] = databuf32[1 * 32 + (16 + (i * 5 % 16))];
+		XC->w[i]      = databuf32[2 * 32 + (i * 5 % 16)];
+		XC->w[16 + i] = databuf32[2 * 32 + (16 + (i * 5 % 16))];
+		XD->w[i]      = databuf32[3 * 32 + (i * 5 % 16)];
+		XD->w[16 + i] = databuf32[3 * 32 + (16 + (i * 5 % 16))];
+		XE->w[i]      = databuf32[4 * 32 + (i * 5 % 16)];
+		XE->w[16 + i] = databuf32[4 * 32 + (16 + (i * 5 % 16))];
+		XF->w[i]      = databuf32[5 * 32 + (i * 5 % 16)];
+		XF->w[16 + i] = databuf32[5 * 32 + (16 + (i * 5 % 16))];
+		XG->w[i]      = databuf32[6 * 32 + (i * 5 % 16)];
+		XG->w[16 + i] = databuf32[6 * 32 + (16 + (i * 5 % 16))];
+		XH->w[i]      = databuf32[7 * 32 + (i * 5 % 16)];
+		XH->w[16 + i] = databuf32[7 * 32 + (16 + (i * 5 % 16))];
 	}
 	for (i = 0; i < 8; i++)
 		dma_list[i].size = 128;
@@ -280,94 +280,89 @@ scrypt_spu_core8(uint8_t *databuf, uint64_t scratch)
 
 	/* 10: B' <-- X */
 	for (i = 0; i < 16; i++) {
-		le32enc(&databuf[0 * 128 + (i * 5 % 16) * 4], XA->w[i]);
-		le32enc(&databuf[0 * 128 + (16 + (i * 5 % 16)) * 4], XA->w[16 + i]);
-		le32enc(&databuf[1 * 128 + (i * 5 % 16) * 4], XB->w[i]);
-		le32enc(&databuf[1 * 128 + (16 + (i * 5 % 16)) * 4], XB->w[16 + i]);
-		le32enc(&databuf[2 * 128 + (i * 5 % 16) * 4], XC->w[i]);
-		le32enc(&databuf[2 * 128 + (16 + (i * 5 % 16)) * 4], XC->w[16 + i]);
-		le32enc(&databuf[3 * 128 + (i * 5 % 16) * 4], XD->w[i]);
-		le32enc(&databuf[3 * 128 + (16 + (i * 5 % 16)) * 4], XD->w[16 + i]);
-		le32enc(&databuf[4 * 128 + (i * 5 % 16) * 4], XE->w[i]);
-		le32enc(&databuf[4 * 128 + (16 + (i * 5 % 16)) * 4], XE->w[16 + i]);
-		le32enc(&databuf[5 * 128 + (i * 5 % 16) * 4], XF->w[i]);
-		le32enc(&databuf[5 * 128 + (16 + (i * 5 % 16)) * 4], XF->w[16 + i]);
-		le32enc(&databuf[6 * 128 + (i * 5 % 16) * 4], XG->w[i]);
-		le32enc(&databuf[6 * 128 + (16 + (i * 5 % 16)) * 4], XG->w[16 + i]);
-		le32enc(&databuf[7 * 128 + (i * 5 % 16) * 4], XH->w[i]);
-		le32enc(&databuf[7 * 128 + (16 + (i * 5 % 16)) * 4], XH->w[16 + i]);
+		databuf32[0 * 32 + (i * 5 % 16)] = XA->w[i];
+		databuf32[0 * 32 + (16 + (i * 5 % 16))] = XA->w[16 + i];
+		databuf32[1 * 32 + (i * 5 % 16)] = XB->w[i];
+		databuf32[1 * 32 + (16 + (i * 5 % 16))] = XB->w[16 + i];
+		databuf32[2 * 32 + (i * 5 % 16)] = XC->w[i];
+		databuf32[2 * 32 + (16 + (i * 5 % 16))] = XC->w[16 + i];
+		databuf32[3 * 32 + (i * 5 % 16)] = XD->w[i];
+		databuf32[3 * 32 + (16 + (i * 5 % 16))] = XD->w[16 + i];
+		databuf32[4 * 32 + (i * 5 % 16)] = XE->w[i];
+		databuf32[4 * 32 + (16 + (i * 5 % 16))] = XE->w[16 + i];
+		databuf32[5 * 32 + (i * 5 % 16)] = XF->w[i];
+		databuf32[5 * 32 + (16 + (i * 5 % 16))] = XF->w[16 + i];
+		databuf32[6 * 32 + (i * 5 % 16)] = XG->w[i];
+		databuf32[6 * 32 + (16 + (i * 5 % 16))] = XG->w[16 + i];
+		databuf32[7 * 32 + (i * 5 % 16)] = XH->w[i];
+		databuf32[7 * 32 + (16 + (i * 5 % 16))] = XH->w[16 + i];
 	}
 }
 
 static void
-scrypt_1024_1_1_256_sp8(const unsigned char * input1,
-                        unsigned char       * output1,
-                        const unsigned char * input2,
-                        unsigned char       * output2,
-                        const unsigned char * input3,
-                        unsigned char       * output3,
-                        const unsigned char * input4,
-                        unsigned char       * output4,
-                        const unsigned char * input5,
-                        unsigned char       * output5,
-                        const unsigned char * input6,
-                        unsigned char       * output6,
-                        const unsigned char * input7,
-                        unsigned char       * output7,
-                        const unsigned char * input8,
-                        unsigned char       * output8,
+scrypt_1024_1_1_256_sp8(const uint32_t * input1,
+                        uint32_t       * output1,
+                        const uint32_t * input2,
+                        uint32_t       * output2,
+                        const uint32_t * input3,
+                        uint32_t       * output3,
+                        const uint32_t * input4,
+                        uint32_t       * output4,
+                        const uint32_t * input5,
+                        uint32_t       * output5,
+                        const uint32_t * input6,
+                        uint32_t       * output6,
+                        const uint32_t * input7,
+                        uint32_t       * output7,
+                        const uint32_t * input8,
+                        uint32_t       * output8,
                         uint64_t              scratchpad)
 {
-	static uint8_t databuf[128 * 8] __attribute__((aligned(128)));
-	uint8_t * B1, * B2, * B3, * B4, * B5, * B6, * B7, * B8;
+	uint32_t tstate1[8], tstate2[8], tstate3[8], tstate4[8];
+	uint32_t tstate5[8], tstate6[8], tstate7[8], tstate8[8];
 
-	const uint32_t r = 1;
-	const uint32_t p = 1;
+	uint32_t ostate1[8], ostate2[8], ostate3[8], ostate4[8];
+	uint32_t ostate5[8], ostate6[8], ostate7[8], ostate8[8];
+	
+	static uint32_t databuf[32 * 8] __attribute__((aligned(128)));
+	uint32_t * B1, * B2, * B3, * B4, * B5, * B6, * B7, * B8;
 
 	B1 = databuf;
-	B2 = databuf + 128 * 1;
-	B3 = databuf + 128 * 2;
-	B4 = databuf + 128 * 3;
-	B5 = databuf + 128 * 4;
-	B6 = databuf + 128 * 5;
-	B7 = databuf + 128 * 6;
-	B8 = databuf + 128 * 7;
+	B2 = databuf + 32 * 1;
+	B3 = databuf + 32 * 2;
+	B4 = databuf + 32 * 3;
+	B5 = databuf + 32 * 4;
+	B6 = databuf + 32 * 5;
+	B7 = databuf + 32 * 6;
+	B8 = databuf + 32 * 7;
 
-	/* 1: (B_0 ... B_{p-1}) <-- PBKDF2(P, S, 1, p * MFLen) */
-	PBKDF2_SHA256((const uint8_t*)input1, 80, (const uint8_t*)input1, 80, 1, B1, p * 128 * r);
-	/* 1: (B_0 ... B_{p-1}) <-- PBKDF2(P, S, 1, p * MFLen) */
-	PBKDF2_SHA256((const uint8_t*)input2, 80, (const uint8_t*)input2, 80, 1, B2, p * 128 * r);
-	/* 1: (B_0 ... B_{p-1}) <-- PBKDF2(P, S, 1, p * MFLen) */
-	PBKDF2_SHA256((const uint8_t*)input3, 80, (const uint8_t*)input3, 80, 1, B3, p * 128 * r);
-	/* 1: (B_0 ... B_{p-1}) <-- PBKDF2(P, S, 1, p * MFLen) */
-	PBKDF2_SHA256((const uint8_t*)input4, 80, (const uint8_t*)input4, 80, 1, B4, p * 128 * r);
-	/* 1: (B_0 ... B_{p-1}) <-- PBKDF2(P, S, 1, p * MFLen) */
-	PBKDF2_SHA256((const uint8_t*)input5, 80, (const uint8_t*)input5, 80, 1, B5, p * 128 * r);
-	/* 1: (B_0 ... B_{p-1}) <-- PBKDF2(P, S, 1, p * MFLen) */
-	PBKDF2_SHA256((const uint8_t*)input6, 80, (const uint8_t*)input6, 80, 1, B6, p * 128 * r);
-	/* 1: (B_0 ... B_{p-1}) <-- PBKDF2(P, S, 1, p * MFLen) */
-	PBKDF2_SHA256((const uint8_t*)input7, 80, (const uint8_t*)input7, 80, 1, B7, p * 128 * r);
-	/* 1: (B_0 ... B_{p-1}) <-- PBKDF2(P, S, 1, p * MFLen) */
-	PBKDF2_SHA256((const uint8_t*)input8, 80, (const uint8_t*)input8, 80, 1, B8, p * 128 * r);
+	PBKDF2_SHA256_80_128_init(input1, tstate1, ostate1);
+	PBKDF2_SHA256_80_128_init(input2, tstate2, ostate2);
+	PBKDF2_SHA256_80_128_init(input3, tstate3, ostate3);
+	PBKDF2_SHA256_80_128_init(input4, tstate4, ostate4);
+	PBKDF2_SHA256_80_128_init(input5, tstate5, ostate5);
+	PBKDF2_SHA256_80_128_init(input6, tstate6, ostate6);
+	PBKDF2_SHA256_80_128_init(input7, tstate7, ostate7);
+	PBKDF2_SHA256_80_128_init(input8, tstate8, ostate8);
+	PBKDF2_SHA256_80_128(tstate1, ostate1, input1, B1);
+	PBKDF2_SHA256_80_128(tstate2, ostate2, input2, B2);
+	PBKDF2_SHA256_80_128(tstate3, ostate3, input3, B3);
+	PBKDF2_SHA256_80_128(tstate4, ostate4, input4, B4);
+	PBKDF2_SHA256_80_128(tstate5, ostate5, input5, B5);
+	PBKDF2_SHA256_80_128(tstate6, ostate6, input6, B6);
+	PBKDF2_SHA256_80_128(tstate7, ostate7, input7, B7);
+	PBKDF2_SHA256_80_128(tstate8, ostate8, input8, B8);
 
 	scrypt_spu_core8(databuf, scratchpad);
 
-	/* 5: DK <-- PBKDF2(P, B, 1, dkLen) */
-	PBKDF2_SHA256((const uint8_t*)input1, 80, B1, p * 128 * r, 1, (uint8_t*)output1, 32);
-	/* 5: DK <-- PBKDF2(P, B, 1, dkLen) */
-	PBKDF2_SHA256((const uint8_t*)input2, 80, B2, p * 128 * r, 1, (uint8_t*)output2, 32);
-	/* 5: DK <-- PBKDF2(P, B, 1, dkLen) */
-	PBKDF2_SHA256((const uint8_t*)input3, 80, B3, p * 128 * r, 1, (uint8_t*)output3, 32);
-	/* 5: DK <-- PBKDF2(P, B, 1, dkLen) */
-	PBKDF2_SHA256((const uint8_t*)input4, 80, B4, p * 128 * r, 1, (uint8_t*)output4, 32);
-	/* 5: DK <-- PBKDF2(P, B, 1, dkLen) */
-	PBKDF2_SHA256((const uint8_t*)input5, 80, B5, p * 128 * r, 1, (uint8_t*)output5, 32);
-	/* 5: DK <-- PBKDF2(P, B, 1, dkLen) */
-	PBKDF2_SHA256((const uint8_t*)input6, 80, B6, p * 128 * r, 1, (uint8_t*)output6, 32);
-	/* 5: DK <-- PBKDF2(P, B, 1, dkLen) */
-	PBKDF2_SHA256((const uint8_t*)input7, 80, B7, p * 128 * r, 1, (uint8_t*)output7, 32);
-	/* 5: DK <-- PBKDF2(P, B, 1, dkLen) */
-	PBKDF2_SHA256((const uint8_t*)input8, 80, B8, p * 128 * r, 1, (uint8_t*)output8, 32);
+	PBKDF2_SHA256_80_128_32(tstate1, ostate1, input1, B1, output1);
+	PBKDF2_SHA256_80_128_32(tstate2, ostate2, input2, B2, output2);
+	PBKDF2_SHA256_80_128_32(tstate3, ostate3, input3, B3, output3);
+	PBKDF2_SHA256_80_128_32(tstate4, ostate4, input4, B4, output4);
+	PBKDF2_SHA256_80_128_32(tstate5, ostate5, input5, B5, output5);
+	PBKDF2_SHA256_80_128_32(tstate6, ostate6, input6, B6, output6);
+	PBKDF2_SHA256_80_128_32(tstate7, ostate7, input7, B7, output7);
+	PBKDF2_SHA256_80_128_32(tstate8, ostate8, input8, B8, output8);
 }
 
 static int
@@ -375,30 +370,22 @@ scanhash_scrypt(uint64_t work_restart_ptr, unsigned char *pdata,
 	uint64_t scratchbuf, const unsigned char *ptarget,
 	uint32_t max_nonce, uint32_t *hashes_done)
 {
-	unsigned char data1[80];
-	unsigned char tmp_hash1[32];
-	unsigned char data2[80];
-	unsigned char tmp_hash2[32];
-	unsigned char data3[80];
-	unsigned char tmp_hash3[32];
-	unsigned char data4[80];
-	unsigned char tmp_hash4[32];
-	unsigned char data5[80];
-	unsigned char tmp_hash5[32];
-	unsigned char data6[80];
-	unsigned char tmp_hash6[32];
-	unsigned char data7[80];
-	unsigned char tmp_hash7[32];
-	unsigned char data8[80];
-	unsigned char tmp_hash8[32];
-	uint32_t *nonce1 = (uint32_t *)(data1 + 64 + 12);
-	uint32_t *nonce2 = (uint32_t *)(data2 + 64 + 12);
-	uint32_t *nonce3 = (uint32_t *)(data3 + 64 + 12);
-	uint32_t *nonce4 = (uint32_t *)(data4 + 64 + 12);
-	uint32_t *nonce5 = (uint32_t *)(data5 + 64 + 12);
-	uint32_t *nonce6 = (uint32_t *)(data6 + 64 + 12);
-	uint32_t *nonce7 = (uint32_t *)(data7 + 64 + 12);
-	uint32_t *nonce8 = (uint32_t *)(data8 + 64 + 12);
+	uint32_t data1[20], tmp_hash1[8];
+	uint32_t data2[20], tmp_hash2[8];
+	uint32_t data3[20], tmp_hash3[8];
+	uint32_t data4[20], tmp_hash4[8];
+	uint32_t data5[20], tmp_hash5[8];
+	uint32_t data6[20], tmp_hash6[8];
+	uint32_t data7[20], tmp_hash7[8];
+	uint32_t data8[20], tmp_hash8[8];
+	uint32_t *nonce1 = &data1[19];
+	uint32_t *nonce2 = &data2[19];
+	uint32_t *nonce3 = &data3[19];
+	uint32_t *nonce4 = &data4[19];
+	uint32_t *nonce5 = &data5[19];
+	uint32_t *nonce6 = &data6[19];
+	uint32_t *nonce7 = &data7[19];
+	uint32_t *nonce8 = &data8[19];
 	uint32_t n = 0;
 	uint32_t Htarg = le32dec(ptarget + 28);
 	int i;
@@ -406,77 +393,77 @@ scanhash_scrypt(uint64_t work_restart_ptr, unsigned char *pdata,
 	int work_restart = 0;
 
 	for (i = 0; i < 80/4; i++) {
-		((uint32_t *)data1)[i] = __builtin_bswap32(((uint32_t *)pdata)[i]);
-		((uint32_t *)data2)[i] = __builtin_bswap32(((uint32_t *)pdata)[i]);
-		((uint32_t *)data3)[i] = __builtin_bswap32(((uint32_t *)pdata)[i]);
-		((uint32_t *)data4)[i] = __builtin_bswap32(((uint32_t *)pdata)[i]);
-		((uint32_t *)data5)[i] = __builtin_bswap32(((uint32_t *)pdata)[i]);
-		((uint32_t *)data6)[i] = __builtin_bswap32(((uint32_t *)pdata)[i]);
-		((uint32_t *)data7)[i] = __builtin_bswap32(((uint32_t *)pdata)[i]);
-		((uint32_t *)data8)[i] = __builtin_bswap32(((uint32_t *)pdata)[i]);
+		data1[i] = be32dec(&((uint32_t *)pdata)[i]);
+		data2[i] = be32dec(&((uint32_t *)pdata)[i]);
+		data3[i] = be32dec(&((uint32_t *)pdata)[i]);
+		data4[i] = be32dec(&((uint32_t *)pdata)[i]);
+		data5[i] = be32dec(&((uint32_t *)pdata)[i]);
+		data6[i] = be32dec(&((uint32_t *)pdata)[i]);
+		data7[i] = be32dec(&((uint32_t *)pdata)[i]);
+		data8[i] = be32dec(&((uint32_t *)pdata)[i]);
 	}
 	
 	while(1) {
 		/* request 'work_restart[thr_id].restart' from external memory */
 		mfc_get(&work_restart, work_restart_ptr, 4, tag3, 0, 0);
 
-		le32enc(nonce1, n + 1);
-		le32enc(nonce2, n + 2);
-		le32enc(nonce3, n + 3);
-		le32enc(nonce4, n + 4);
-		le32enc(nonce5, n + 5);
-		le32enc(nonce6, n + 6);
-		le32enc(nonce7, n + 7);
-		le32enc(nonce8, n + 8);
+		*nonce1 = n + 1;
+		*nonce2 = n + 2;
+		*nonce3 = n + 3;
+		*nonce4 = n + 4;
+		*nonce5 = n + 5;
+		*nonce6 = n + 6;
+		*nonce7 = n + 7;
+		*nonce8 = n + 8;
 		scrypt_1024_1_1_256_sp8(data1, tmp_hash1, data2, tmp_hash2,
 		                        data3, tmp_hash3, data4, tmp_hash4,
 		                        data5, tmp_hash5, data6, tmp_hash6,
 		                        data7, tmp_hash7, data8, tmp_hash8,
 		                        scratchbuf);
 
-		if (le32dec(tmp_hash1+28) <= Htarg) {
+		if (tmp_hash1[7] <= Htarg) {
 			be32enc(pdata + 64 + 12, n + 1);
 			*hashes_done = n;
 			return true;
 		}
 
-		if (le32dec(tmp_hash2+28) <= Htarg && n + 2 <= max_nonce) {
+		if (tmp_hash2[7] <= Htarg && n + 2 <= max_nonce) {
 			be32enc(pdata + 64 + 12, n + 2);
 			*hashes_done = n + 2;
 			return true;
 		}
 
-		if (le32dec(tmp_hash3+28) <= Htarg && n + 3 <= max_nonce) {
+		if (tmp_hash3[7] <= Htarg && n + 3 <= max_nonce) {
 			be32enc(pdata + 64 + 12, n + 3);
 			*hashes_done = n + 3;
 			return true;
 		}
 
-		if (le32dec(tmp_hash4+28) <= Htarg && n + 4 <= max_nonce) {
+		if (tmp_hash4[7] <= Htarg && n + 4 <= max_nonce) {
 			be32enc(pdata + 64 + 12, n + 4);
 			*hashes_done = n + 4;
 			return true;
 		}
 
-		if (le32dec(tmp_hash5+28) <= Htarg && n + 5 <= max_nonce) {
+		if (tmp_hash5[7] <= Htarg && n + 5 <= max_nonce) {
 			be32enc(pdata + 64 + 12, n + 5);
 			*hashes_done = n + 5;
 			return true;
 		}
 
-		if (le32dec(tmp_hash6+28) <= Htarg && n + 6 <= max_nonce) {
+		if (tmp_hash6[7] <= Htarg && n + 6 <= max_nonce) {
 			be32enc(pdata + 64 + 12, n + 6);
 			*hashes_done = n + 6;
 			return true;
 		}
 
-		if (le32dec(tmp_hash7+28) <= Htarg && n + 7 <= max_nonce) {
+		if (tmp_hash7[7] <= Htarg && n + 7 <= max_nonce) {
 			be32enc(pdata + 64 + 12, n + 7);
 			*hashes_done = n + 7;
 			return true;
 		}
 
-		if (le32dec(tmp_hash8+28) <= Htarg && n + 8 <= max_nonce) {
+		if (tmp_hash8[7] <= Htarg && n + 8 <= max_nonce) {
 			be32enc(pdata + 64 + 12, n + 8);
 			*hashes_done = n + 8;
 			return true;

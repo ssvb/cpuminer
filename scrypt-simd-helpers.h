@@ -270,16 +270,17 @@ typedef union { uint32x4 q[8]; uint32_t w[32]; } XY;
  * All buffers must be aligned at 64 byte boundary.
  */
 static inline
-void scrypt_simd_core1(uint8_t databuf[128], void * scratch)
+void scrypt_simd_core1(uint32_t databuf[32], void * scratch)
 {
+	uint32_t * databufA = (uint32_t *)&databuf[0];
 	XY       * X = (XY *)((uintptr_t)scratch + 0);
 	uint32x4 * V = (uint32x4 *)((uintptr_t)scratch + 128);
 	int i, j;
 
 	/* 1: X <-- B */
 	for (i = 0; i < 16; i++) {
-		X->w[i]      = le32dec(&databuf[(i * 5 % 16) * 4]);
-		X->w[16 + i] = le32dec(&databuf[(16 + (i * 5 % 16)) * 4]);
+		X->w[i]      = databufA[i * 5 % 16];
+		X->w[16 + i] = databufA[16 + (i * 5 % 16)];
 	}
 
 	/* 2: for i = 0 to N - 1 do */
@@ -299,8 +300,8 @@ void scrypt_simd_core1(uint8_t databuf[128], void * scratch)
 
 	/* 10: B' <-- X */
 	for (i = 0; i < 16; i++) {
-		le32enc(&databuf[(i * 5 % 16) * 4], X->w[i]);
-		le32enc(&databuf[(16 + (i * 5 % 16)) * 4], X->w[16 + i]);
+		databufA[i * 5 % 16] = X->w[i];
+		databufA[16 + (i * 5 % 16)] = X->w[16 + i];
 	}
 }
 
@@ -317,10 +318,10 @@ void scrypt_simd_core1(uint8_t databuf[128], void * scratch)
  * All buffers must be aligned at 64 byte boundary.
  */
 static inline
-void scrypt_simd_core2(uint8_t databuf[2 * 128], void * scratch)
+void scrypt_simd_core2(uint32_t databuf[2 * 32], void * scratch)
 {
-	uint8_t  * databufA = &databuf[0];
-	uint8_t  * databufB = &databuf[128];
+	uint32_t * databufA = (uint32_t *)&databuf[0];
+	uint32_t * databufB = (uint32_t *)&databuf[32];
 	XY       * XA = (XY *)((uintptr_t)scratch);
 	XY       * XB = (XY *)((uintptr_t)scratch + 128 + 128 * 1024);
 	uint32x4 * VA = (uint32x4 *)((uintptr_t)XA + 128);
@@ -329,10 +330,10 @@ void scrypt_simd_core2(uint8_t databuf[2 * 128], void * scratch)
 
 	/* 1: X <-- B */
 	for (i = 0; i < 16; i++) {
-		XA->w[i]      = le32dec(&databufA[(i * 5 % 16) * 4]);
-		XA->w[16 + i] = le32dec(&databufA[(16 + (i * 5 % 16)) * 4]);
-		XB->w[i]      = le32dec(&databufB[(i * 5 % 16) * 4]);
-		XB->w[16 + i] = le32dec(&databufB[(16 + (i * 5 % 16)) * 4]);
+		XA->w[i]      = databufA[i * 5 % 16];
+		XA->w[16 + i] = databufA[16 + (i * 5 % 16)];
+		XB->w[i]      = databufB[i * 5 % 16];
+		XB->w[16 + i] = databufB[16 + (i * 5 % 16)];
 	}
 
 	/* 2: for i = 0 to N - 1 do */
@@ -355,10 +356,10 @@ void scrypt_simd_core2(uint8_t databuf[2 * 128], void * scratch)
 
 	/* 10: B' <-- X */
 	for (i = 0; i < 16; i++) {
-		le32enc(&databufA[(i * 5 % 16) * 4], XA->w[i]);
-		le32enc(&databufA[(16 + (i * 5 % 16)) * 4], XA->w[16 + i]);
-		le32enc(&databufB[(i * 5 % 16) * 4], XB->w[i]);
-		le32enc(&databufB[(16 + (i * 5 % 16)) * 4], XB->w[16 + i]);
+		databufA[i * 5 % 16] = XA->w[i];
+		databufA[16 + (i * 5 % 16)] = XA->w[16 + i];
+		databufB[i * 5 % 16] = XB->w[i];
+		databufB[16 + (i * 5 % 16)] = XB->w[16 + i];
 	}
 }
 

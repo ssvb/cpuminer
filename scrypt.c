@@ -1,5 +1,5 @@
 /*-
- * Copyright 2009 Colin Percival, 2011 ArtForz
+ * Copyright 2009 Colin Percival, 2011 ArtForz, 2011 pooler
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -37,228 +37,134 @@
 #include "sha256-helpers.h"
 #include "scrypt-simd-helpers.h"
 
-static void blkcpy(void *, void *, size_t);
-static void blkxor(void *, void *, size_t);
-static void salsa20_8(uint32_t[16]);
-static void blockmix_salsa8(uint32_t *, uint32_t *, uint32_t *, size_t);
-static uint64_t integerify(void *, size_t);
-static void smix(uint8_t *, size_t, uint64_t, uint32_t *, uint32_t *);
-
-static void
-blkcpy(void * dest, void * src, size_t len)
-{
-	size_t * D = dest;
-	size_t * S = src;
-	size_t L = len / sizeof(size_t);
-	size_t i;
-
-	for (i = 0; i < L; i++)
-		D[i] = S[i];
-}
-
-static void
-blkxor(void * dest, void * src, size_t len)
-{
-	size_t * D = dest;
-	size_t * S = src;
-	size_t L = len / sizeof(size_t);
-	size_t i;
-
-	for (i = 0; i < L; i++)
-		D[i] ^= S[i];
-}
-
 /**
  * salsa20_8(B):
  * Apply the salsa20/8 core to the provided block.
  */
-static void
-salsa20_8(uint32_t B[16])
+static inline void
+salsa20_8(uint32_t B[16], const uint32_t Bx[16])
 {
-	uint32_t x[16];
+	uint32_t x00,x01,x02,x03,x04,x05,x06,x07,x08,x09,x10,x11,x12,x13,x14,x15;
 	size_t i;
 
-	blkcpy(x, B, 64);
+	x00 = (B[ 0] ^= Bx[ 0]);
+	x01 = (B[ 1] ^= Bx[ 1]);
+	x02 = (B[ 2] ^= Bx[ 2]);
+	x03 = (B[ 3] ^= Bx[ 3]);
+	x04 = (B[ 4] ^= Bx[ 4]);
+	x05 = (B[ 5] ^= Bx[ 5]);
+	x06 = (B[ 6] ^= Bx[ 6]);
+	x07 = (B[ 7] ^= Bx[ 7]);
+	x08 = (B[ 8] ^= Bx[ 8]);
+	x09 = (B[ 9] ^= Bx[ 9]);
+	x10 = (B[10] ^= Bx[10]);
+	x11 = (B[11] ^= Bx[11]);
+	x12 = (B[12] ^= Bx[12]);
+	x13 = (B[13] ^= Bx[13]);
+	x14 = (B[14] ^= Bx[14]);
+	x15 = (B[15] ^= Bx[15]);
 	for (i = 0; i < 8; i += 2) {
 #define R(a,b) (((a) << (b)) | ((a) >> (32 - (b))))
 		/* Operate on columns. */
-		x[ 4] ^= R(x[ 0]+x[12], 7);  x[ 8] ^= R(x[ 4]+x[ 0], 9);
-		x[12] ^= R(x[ 8]+x[ 4],13);  x[ 0] ^= R(x[12]+x[ 8],18);
-
-		x[ 9] ^= R(x[ 5]+x[ 1], 7);  x[13] ^= R(x[ 9]+x[ 5], 9);
-		x[ 1] ^= R(x[13]+x[ 9],13);  x[ 5] ^= R(x[ 1]+x[13],18);
-
-		x[14] ^= R(x[10]+x[ 6], 7);  x[ 2] ^= R(x[14]+x[10], 9);
-		x[ 6] ^= R(x[ 2]+x[14],13);  x[10] ^= R(x[ 6]+x[ 2],18);
-
-		x[ 3] ^= R(x[15]+x[11], 7);  x[ 7] ^= R(x[ 3]+x[15], 9);
-		x[11] ^= R(x[ 7]+x[ 3],13);  x[15] ^= R(x[11]+x[ 7],18);
+		x04 ^= R(x00+x12, 7);	x09 ^= R(x05+x01, 7);	x14 ^= R(x10+x06, 7);	x03 ^= R(x15+x11, 7);
+		x08 ^= R(x04+x00, 9);	x13 ^= R(x09+x05, 9);	x02 ^= R(x14+x10, 9);	x07 ^= R(x03+x15, 9);
+		x12 ^= R(x08+x04,13);	x01 ^= R(x13+x09,13);	x06 ^= R(x02+x14,13);	x11 ^= R(x07+x03,13);
+		x00 ^= R(x12+x08,18);	x05 ^= R(x01+x13,18);	x10 ^= R(x06+x02,18);	x15 ^= R(x11+x07,18);
 
 		/* Operate on rows. */
-		x[ 1] ^= R(x[ 0]+x[ 3], 7);  x[ 2] ^= R(x[ 1]+x[ 0], 9);
-		x[ 3] ^= R(x[ 2]+x[ 1],13);  x[ 0] ^= R(x[ 3]+x[ 2],18);
-
-		x[ 6] ^= R(x[ 5]+x[ 4], 7);  x[ 7] ^= R(x[ 6]+x[ 5], 9);
-		x[ 4] ^= R(x[ 7]+x[ 6],13);  x[ 5] ^= R(x[ 4]+x[ 7],18);
-
-		x[11] ^= R(x[10]+x[ 9], 7);  x[ 8] ^= R(x[11]+x[10], 9);
-		x[ 9] ^= R(x[ 8]+x[11],13);  x[10] ^= R(x[ 9]+x[ 8],18);
-
-		x[12] ^= R(x[15]+x[14], 7);  x[13] ^= R(x[12]+x[15], 9);
-		x[14] ^= R(x[13]+x[12],13);  x[15] ^= R(x[14]+x[13],18);
+		x01 ^= R(x00+x03, 7);	x06 ^= R(x05+x04, 7);	x11 ^= R(x10+x09, 7);	x12 ^= R(x15+x14, 7);
+		x02 ^= R(x01+x00, 9);	x07 ^= R(x06+x05, 9);	x08 ^= R(x11+x10, 9);	x13 ^= R(x12+x15, 9);
+		x03 ^= R(x02+x01,13);	x04 ^= R(x07+x06,13);	x09 ^= R(x08+x11,13);	x14 ^= R(x13+x12,13);
+		x00 ^= R(x03+x02,18);	x05 ^= R(x04+x07,18);	x10 ^= R(x09+x08,18);	x15 ^= R(x14+x13,18);
 #undef R
 	}
-	for (i = 0; i < 16; i++)
-		B[i] += x[i];
+	B[ 0] += x00;
+	B[ 1] += x01;
+	B[ 2] += x02;
+	B[ 3] += x03;
+	B[ 4] += x04;
+	B[ 5] += x05;
+	B[ 6] += x06;
+	B[ 7] += x07;
+	B[ 8] += x08;
+	B[ 9] += x09;
+	B[10] += x10;
+	B[11] += x11;
+	B[12] += x12;
+	B[13] += x13;
+	B[14] += x14;
+	B[15] += x15;
 }
 
-/**
- * blockmix_salsa8(Bin, Bout, X, r):
- * Compute Bout = BlockMix_{salsa20/8, r}(Bin).  The input Bin must be 128r
- * bytes in length; the output Bout must also be the same size.  The
- * temporary space X must be 64 bytes.
- */
-static void
-blockmix_salsa8(uint32_t * Bin, uint32_t * Bout, uint32_t * X, size_t r)
+static inline void scrypt_core1(uint32_t *X, uint32_t *V)
 {
-	size_t i;
+	uint32_t i;
+	uint32_t j;
+	uint32_t k;
+	uint64_t *p1, *p2;
+	p1 = (uint64_t *)X;
+	for (i = 0; i < 1024; i += 2) {
+		memcpy(&V[i * 32], X, 128);
 
-	/* 1: X <-- B_{2r - 1} */
-	blkcpy(X, &Bin[(2 * r - 1) * 16], 64);
+		salsa20_8(&X[0], &X[16]);
+		salsa20_8(&X[16], &X[0]);
 
-	/* 2: for i = 0 to 2r - 1 do */
-	for (i = 0; i < 2 * r; i += 2) {
-		/* 3: X <-- H(X \xor B_i) */
-		blkxor(X, &Bin[i * 16], 64);
-		salsa20_8(X);
+		memcpy(&V[(i + 1) * 32], X, 128);
 
-		/* 4: Y_i <-- X */
-		/* 6: B' <-- (Y_0, Y_2 ... Y_{2r-2}, Y_1, Y_3 ... Y_{2r-1}) */
-		blkcpy(&Bout[i * 8], X, 64);
+		salsa20_8(&X[0], &X[16]);
+		salsa20_8(&X[16], &X[0]);
+	}
+	for (i = 0; i < 1024; i += 2) {
+		j = X[16] & 1023;
+		p2 = (uint64_t *)(&V[j * 32]);
+		for(k = 0; k < 16; k++)
+			p1[k] ^= p2[k];
 
-		/* 3: X <-- H(X \xor B_i) */
-		blkxor(X, &Bin[i * 16 + 16], 64);
-		salsa20_8(X);
+		salsa20_8(&X[0], &X[16]);
+		salsa20_8(&X[16], &X[0]);
 
-		/* 4: Y_i <-- X */
-		/* 6: B' <-- (Y_0, Y_2 ... Y_{2r-2}, Y_1, Y_3 ... Y_{2r-1}) */
-		blkcpy(&Bout[i * 8 + r * 16], X, 64);
+		j = X[16] & 1023;
+		p2 = (uint64_t *)(&V[j * 32]);
+		for(k = 0; k < 16; k++)
+			p1[k] ^= p2[k];
+
+		salsa20_8(&X[0], &X[16]);
+		salsa20_8(&X[16], &X[0]);
 	}
 }
 
-/**
- * integerify(B, r):
- * Return the result of parsing B_{2r-1} as a little-endian integer.
- */
-static uint64_t
-integerify(void * B, size_t r)
-{
-	uint32_t * X = (void *)((uintptr_t)(B) + (2 * r - 1) * 64);
-
-	return (((uint64_t)(X[1]) << 32) + X[0]);
-}
-
-/**
- * smix(B, r, N, V, XY):
- * Compute B = SMix_r(B, N).  The input B must be 128r bytes in length;
- * the temporary storage V must be 128rN bytes in length; the temporary
- * storage XY must be 256r + 64 bytes in length.  The value N must be a
- * power of 2 greater than 1.  The arrays B, V, and XY must be aligned to a
- * multiple of 64 bytes.
- */
-static void
-smix(uint8_t * B, size_t r, uint64_t N, uint32_t * V, uint32_t * XY)
-{
-	uint32_t * X = XY;
-	uint32_t * Y = &XY[32 * r];
-	uint32_t * Z = &XY[64 * r];
-	uint64_t i;
-	uint64_t j;
-	size_t k;
-
-	/* 1: X <-- B */
-	for (k = 0; k < 32 * r; k++)
-		X[k] = le32dec(&B[4 * k]);
-
-	/* 2: for i = 0 to N - 1 do */
-	for (i = 0; i < N; i += 2) {
-		/* 3: V_i <-- X */
-		blkcpy(&V[i * (32 * r)], X, 128 * r);
-
-		/* 4: X <-- H(X) */
-		blockmix_salsa8(X, Y, Z, r);
-
-		/* 3: V_i <-- X */
-		blkcpy(&V[(i + 1) * (32 * r)], Y, 128 * r);
-
-		/* 4: X <-- H(X) */
-		blockmix_salsa8(Y, X, Z, r);
-	}
-
-	/* 6: for i = 0 to N - 1 do */
-	for (i = 0; i < N; i += 2) {
-		/* 7: j <-- Integerify(X) mod N */
-		j = integerify(X, r) & (N - 1);
-
-		/* 8: X <-- H(X \xor V_j) */
-		blkxor(X, &V[j * (32 * r)], 128 * r);
-		blockmix_salsa8(X, Y, Z, r);
-
-		/* 7: j <-- Integerify(X) mod N */
-		j = integerify(Y, r) & (N - 1);
-
-		/* 8: X <-- H(X \xor V_j) */
-		blkxor(Y, &V[j * (32 * r)], 128 * r);
-		blockmix_salsa8(Y, X, Z, r);
-	}
-
-	/* 10: B' <-- X */
-	for (k = 0; k < 32 * r; k++)
-		le32enc(&B[4 * k], X[k]);
-}
 
 /* cpu and memory intensive function to transform a 80 byte buffer into a 32 byte output
    scratchpad size needs to be at least 63 + (128 * r * p) + (256 * r + 64) + (128 * r * N) bytes
  */
-static void scrypt_1024_1_1_256_sp1(const char* input, char* output, char* scratchpad)
+static void scrypt_1024_1_1_256_sp1(const uint32_t* input, uint32_t* output, uint8_t* scratchpad)
 {
-	uint8_t * B;
+	uint32_t tstate[8], ostate[8];
+	uint32_t * B;
 	uint32_t * V;
-	uint32_t * XY;
-	uint32_t i;
 
-	const uint32_t N = 1024;
-	const uint32_t r = 1;
-	const uint32_t p = 1;
+	B = (uint32_t *)(((uintptr_t)(scratchpad) + 63) & ~ (uintptr_t)(63));
+	V = (uint32_t *)(B + 32);
 
-	B = (uint8_t *)(((uintptr_t)(scratchpad) + 63) & ~ (uintptr_t)(63));
-	XY = (uint32_t *)(B + (128 * r * p));
-	V = (uint32_t *)(B + (128 * r * p) + (256 * r + 64));
-
-	/* 1: (B_0 ... B_{p-1}) <-- PBKDF2(P, S, 1, p * MFLen) */
-	PBKDF2_SHA256((const uint8_t*)input, 80, (const uint8_t*)input, 80, 1, B, p * 128 * r);
+	PBKDF2_SHA256_80_128_init(input, tstate, ostate);
+	PBKDF2_SHA256_80_128(tstate, ostate, input, B);
 
 #ifdef HAVE_SCRYPT_SIMD_HELPERS
-	scrypt_simd_core1(B, XY);
+	scrypt_simd_core1(B, V);
 #else
-	/* 2: for i = 0 to p - 1 do */
-	for (i = 0; i < p; i++) {
-		/* 3: B_i <-- MF(B_i, N) */
-		smix(&B[i * 128 * r], r, N, V, XY);
-	}
+	scrypt_core1(B, V);
 #endif
 
-	/* 5: DK <-- PBKDF2(P, B, 1, dkLen) */
-	PBKDF2_SHA256((const uint8_t*)input, 80, B, p * 128 * r, 1, (uint8_t*)output, 32);
+	PBKDF2_SHA256_80_128_32(tstate, ostate, input, B, output);
 }
 
-int scanhash_scrypt1(int thr_id, unsigned char *pdata, unsigned char *scratchbuf,
+int scanhash_scrypt1(int thr_id, unsigned char *pdata, uint8_t *scratchbuf,
 	const unsigned char *ptarget,
 	uint32_t max_nonce, unsigned long *hashes_done)
 {
-	unsigned char data[80];
-	unsigned char tmp_hash[32];
-	uint32_t *nonce = (uint32_t *)(data + 64 + 12);
+	uint32_t data[20];
+	uint32_t tmp_hash[32];
+	uint32_t *nonce = (uint32_t *)(data + 19);
 	uint32_t n = 0;
 	uint32_t Htarg = le32dec(ptarget + 28);
 	int i;
@@ -266,14 +172,14 @@ int scanhash_scrypt1(int thr_id, unsigned char *pdata, unsigned char *scratchbuf
 	work_restart[thr_id].restart = 0;
 	
 	for (i = 0; i < 80/4; i++)
-		((uint32_t *)data)[i] = swab32(((uint32_t *)pdata)[i]);
+		data[i] = be32dec(pdata + i * 4);
 	
 	while(1) {
 		n++;
-		le32enc(nonce, n);
+		*nonce = n;
 		scrypt_1024_1_1_256_sp1(data, tmp_hash, scratchbuf);
 
-		if (le32dec(tmp_hash+28) <= Htarg) {
+		if (tmp_hash[7] <= Htarg) {
 			be32enc(pdata + 64 + 12, n);
 			*hashes_done = n;
 			return true;
@@ -290,46 +196,41 @@ int scanhash_scrypt1(int thr_id, unsigned char *pdata, unsigned char *scratchbuf
 #ifdef HAVE_SCRYPT_SIMD_HELPERS
 
 static void
-scrypt_1024_1_1_256_sp2(const unsigned char * input1,
-                        unsigned char       * output1,
-                        const unsigned char * input2,
-                        unsigned char       * output2,
-                        unsigned char       * scratchpad)
+scrypt_1024_1_1_256_sp2(const uint32_t * input1,
+                        uint32_t       * output1,
+                        const uint32_t * input2,
+                        uint32_t       * output2,
+                        uint8_t        * scratchpad)
 {
-	uint8_t * B1, * B2;
-	uint8_t * V;
+	uint32_t tstate1[8], tstate2[8], ostate1[8], ostate2[8];
+	uint32_t * B1, * B2;
+	uint32_t * V;
 
-	const uint32_t N = 1024;
-	const uint32_t r = 1;
-	const uint32_t p = 1;
+	B1 = (uint32_t *)(((uintptr_t)(scratchpad) + 63) & ~ (uintptr_t)(63));
+	B2 = B1 + 32;
+	V  = B2 + 32;
 
-	B1 = (uint8_t *)(((uintptr_t)(scratchpad) + 63) & ~ (uintptr_t)(63));
-	B2 = B1 + 128;
-	V  = B2 + 128;
-
-	/* 1: (B_0 ... B_{p-1}) <-- PBKDF2(P, S, 1, p * MFLen) */
-	PBKDF2_SHA256((const uint8_t*)input1, 80, (const uint8_t*)input1, 80, 1, B1, p * 128 * r);
-	/* 1: (B_0 ... B_{p-1}) <-- PBKDF2(P, S, 1, p * MFLen) */
-	PBKDF2_SHA256((const uint8_t*)input2, 80, (const uint8_t*)input2, 80, 1, B2, p * 128 * r);
+	PBKDF2_SHA256_80_128_init(input1, tstate1, ostate1);
+	PBKDF2_SHA256_80_128_init(input2, tstate2, ostate2);
+	PBKDF2_SHA256_80_128(tstate1, ostate1, input1, B1);
+	PBKDF2_SHA256_80_128(tstate2, ostate2, input2, B2);
 
 	scrypt_simd_core2(B1, V);
 
-	/* 5: DK <-- PBKDF2(P, B, 1, dkLen) */
-	PBKDF2_SHA256((const uint8_t*)input1, 80, B1, p * 128 * r, 1, (uint8_t*)output1, 32);
-	/* 5: DK <-- PBKDF2(P, B, 1, dkLen) */
-	PBKDF2_SHA256((const uint8_t*)input2, 80, B2, p * 128 * r, 1, (uint8_t*)output2, 32);
+	PBKDF2_SHA256_80_128_32(tstate1, ostate1, input1, B1, output1);
+	PBKDF2_SHA256_80_128_32(tstate2, ostate2, input2, B2, output2);
 }
 
 int scanhash_scrypt2(int thr_id, unsigned char *pdata, unsigned char *scratchbuf,
 	const unsigned char *ptarget,
 	uint32_t max_nonce, unsigned long *hashes_done)
 {
-	unsigned char data1[80];
-	unsigned char tmp_hash1[32];
-	unsigned char data2[80];
-	unsigned char tmp_hash2[32];
-	uint32_t *nonce1 = (uint32_t *)(data1 + 64 + 12);
-	uint32_t *nonce2 = (uint32_t *)(data2 + 64 + 12);
+	uint32_t data1[20];
+	uint32_t tmp_hash1[8];
+	uint32_t data2[20];
+	uint32_t tmp_hash2[8];
+	uint32_t *nonce1 = (uint32_t *)(data1 + 19);
+	uint32_t *nonce2 = (uint32_t *)(data2 + 19);
 	uint32_t n = 0;
 	uint32_t Htarg = le32dec(ptarget + 28);
 	int i;
@@ -337,22 +238,22 @@ int scanhash_scrypt2(int thr_id, unsigned char *pdata, unsigned char *scratchbuf
 	work_restart[thr_id].restart = 0;
 	
 	for (i = 0; i < 80/4; i++) {
-		((uint32_t *)data1)[i] = swab32(((uint32_t *)pdata)[i]);
-		((uint32_t *)data2)[i] = swab32(((uint32_t *)pdata)[i]);
+		((uint32_t *)data1)[i] = be32dec(pdata + i * 4);
+		((uint32_t *)data2)[i] = be32dec(pdata + i * 4);
 	}
 	
 	while(1) {
-		le32enc(nonce1, n + 1);
-		le32enc(nonce2, n + 2);
+		*nonce1 = n + 1;
+		*nonce2 = n + 2;
 		scrypt_1024_1_1_256_sp2(data1, tmp_hash1, data2, tmp_hash2, scratchbuf);
 
-		if (le32dec(tmp_hash1+28) <= Htarg) {
+		if (tmp_hash1[7] <= Htarg) {
 			be32enc(pdata + 64 + 12, n + 1);
 			*hashes_done = n + 1;
 			return true;
 		}
 
-		if (le32dec(tmp_hash2+28) <= Htarg && n + 2 <= max_nonce) {
+		if (tmp_hash2[7] <= Htarg && n + 2 <= max_nonce) {
 			be32enc(pdata + 64 + 12, n + 2);
 			*hashes_done = n + 2;
 			return true;
