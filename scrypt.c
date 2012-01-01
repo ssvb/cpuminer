@@ -101,8 +101,8 @@ static inline void scrypt_core1(uint32_t *X, uint32_t *V)
 	uint32_t i;
 	uint32_t j;
 	uint32_t k;
-	uint64_t *p1, *p2;
-	p1 = (uint64_t *)X;
+	uint32_t *p1, *p2;
+	p1 = X;
 	for (i = 0; i < 1024; i += 2) {
 		memcpy(&V[i * 32], X, 128);
 
@@ -116,16 +116,16 @@ static inline void scrypt_core1(uint32_t *X, uint32_t *V)
 	}
 	for (i = 0; i < 1024; i += 2) {
 		j = X[16] & 1023;
-		p2 = (uint64_t *)(&V[j * 32]);
-		for(k = 0; k < 16; k++)
+		p2 = &V[j * 32];
+		for(k = 0; k < 32; k++)
 			p1[k] ^= p2[k];
 
 		salsa20_8(&X[0], &X[16]);
 		salsa20_8(&X[16], &X[0]);
 
 		j = X[16] & 1023;
-		p2 = (uint64_t *)(&V[j * 32]);
-		for(k = 0; k < 16; k++)
+		p2 = &V[j * 32];
+		for(k = 0; k < 32; k++)
 			p1[k] ^= p2[k];
 
 		salsa20_8(&X[0], &X[16]);
