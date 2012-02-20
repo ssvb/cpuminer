@@ -156,13 +156,96 @@ salsa20_8_xor4(uint32x4 * __restrict B, const uint32x4 * __restrict Bx,
 	E[3] += W3;
 }
 
+void salsa20_8_xor4x_asm(uint32x4 * data);
+
+void scrypt_spu_loop1_asm(uint32x4 * data,
+                             uint32x4 * dma_vect_list,
+                             uint32x4   dma_vect_step,
+                             uint64_t   scratch_eahi,
+                             int        tag1,
+                             int        tag_mask1,
+                             int        tag2,
+                             int        tag_mask2);
+
+static __attribute__((always_inline)) void
+salsa20_8_xor4d(uint32x4 * data)
+{
+	salsa20_8_xor4(&data[0],  &data[4],  &data[8],  &data[12],
+	               &data[16], &data[20], &data[24], &data[28]);
+	salsa20_8_xor4(&data[4],  &data[0],  &data[12], &data[8],
+	               &data[20], &data[16], &data[28], &data[24]);
+}
+
+static mfc_list_element_t dma_list[8] __attribute__((aligned(128)));
+
+static void scrypt_spu_loop1(uint32x4 * data,
+                             uint32x4 * dma_vect_list,
+                             uint32x4   dma_vect_step,
+                             uint64_t   scratch_eahi,
+                             int        tag1,
+                             int        tag_mask1,
+                             int        tag2,
+                             int        tag_mask2)
+{
+	static uint32x4 Z[8 * 8] __attribute__((aligned(128)));
+	int i;
+
+	blkcpy128(&Z[0 * 8], &data[0 * 8]);
+	blkcpy128(&Z[1 * 8], &data[1 * 8]);
+	blkcpy128(&Z[2 * 8], &data[2 * 8]);
+	blkcpy128(&Z[3 * 8], &data[3 * 8]);
+	spu_dsync();
+	spu_mfcdma64(&Z[0], scratch_eahi, (uint32_t)&dma_vect_list[0], 4 * 8, tag1, MFC_PUTL_CMD);
+	for (i = 0; i < 1023; i++) {
+		salsa20_8_xor4d(data);
+		spu_writech(MFC_WrTagMask, tag_mask2);
+		spu_mfcstat(MFC_TAG_UPDATE_ALL);
+		dma_vect_list[2] += dma_vect_step;
+		dma_vect_list[3] += dma_vect_step;
+		blkcpy128(&Z[4 * 8], &data[4 * 8]);
+		blkcpy128(&Z[5 * 8], &data[5 * 8]);
+		blkcpy128(&Z[6 * 8], &data[6 * 8]);
+		blkcpy128(&Z[7 * 8], &data[7 * 8]);
+		spu_dsync();
+		spu_mfcdma64(&Z[4 * 8], scratch_eahi, (uint32_t)&dma_vect_list[2], 4 * 8, tag2, MFC_PUTL_CMD);
+
+		salsa20_8_xor4d(data + 32);
+		spu_writech(MFC_WrTagMask, tag_mask1);
+		spu_mfcstat(MFC_TAG_UPDATE_ALL);
+		dma_vect_list[0] += dma_vect_step;
+		dma_vect_list[1] += dma_vect_step;
+		blkcpy128(&Z[0 * 8], &data[0 * 8]);
+		blkcpy128(&Z[1 * 8], &data[1 * 8]);
+		blkcpy128(&Z[2 * 8], &data[2 * 8]);
+		blkcpy128(&Z[3 * 8], &data[3 * 8]);
+		spu_dsync();
+		spu_mfcdma64(&Z[0], scratch_eahi, (uint32_t)&dma_vect_list[0], 4 * 8, tag1, MFC_PUTL_CMD);
+	}
+	salsa20_8_xor4d(data);
+	spu_writech(MFC_WrTagMask, tag_mask2);
+	spu_mfcstat(MFC_TAG_UPDATE_ALL);
+	dma_vect_list[2] += dma_vect_step;
+	dma_vect_list[3] += dma_vect_step;
+	blkcpy128(&Z[4 * 8], &data[4 * 8]);
+	blkcpy128(&Z[5 * 8], &data[5 * 8]);
+	blkcpy128(&Z[6 * 8], &data[6 * 8]);
+	blkcpy128(&Z[7 * 8], &data[7 * 8]);
+	spu_dsync();
+	spu_mfcdma64(&Z[4 * 8], scratch_eahi, (uint32_t)&dma_vect_list[2], 4 * 8, tag2, MFC_PUTL_CMD);
+	salsa20_8_xor4d(data + 32);
+
+	spu_writech(MFC_WrTagMask, tag_mask1 | tag_mask2);
+	spu_mfcstat(MFC_TAG_UPDATE_ALL);
+}
+
+/* Use assembly implementation */
+#define scrypt_spu_loop1 scrypt_spu_loop1_asm
+
 static void
 scrypt_spu_core8(uint32_t *databuf32, uint64_t scratch)
 {
-	static mfc_list_element_t dma_list[8] __attribute__((aligned(128)));
 	static XY X[8] __attribute__((aligned(128)));
 	static uint32x4 Y[8 * 8] __attribute__((aligned(128)));
-	static uint32x4 Z[8 * 8] __attribute__((aligned(128)));
 	XY       * XA = &X[0];
 	XY       * XB = &X[1];
 	XY       * XC = &X[2];
@@ -207,31 +290,30 @@ scrypt_spu_core8(uint32_t *databuf32, uint64_t scratch)
 		dma_list[i].size = 128;
 
 	/* 2: for i = 0 to N - 1 do */
-	for (i = 0; i < 1024; i++) {
-		blkcpy128(&Z[0 * 8], &XA->q[0]);
-		blkcpy128(&Z[1 * 8], &XB->q[0]);
-		blkcpy128(&Z[2 * 8], &XC->q[0]);
-		blkcpy128(&Z[3 * 8], &XD->q[0]);
-		blkcpy128(&Z[4 * 8], &XE->q[0]);
-		blkcpy128(&Z[5 * 8], &XF->q[0]);
-		blkcpy128(&Z[6 * 8], &XG->q[0]);
-		blkcpy128(&Z[7 * 8], &XH->q[0]);
-		dma_list[0].eal = mfc_ea2l(VA + i * 128);
-		dma_list[1].eal = mfc_ea2l(VB + i * 128);
-		dma_list[2].eal = mfc_ea2l(VC + i * 128);
-		dma_list[3].eal = mfc_ea2l(VD + i * 128);
-		dma_list[4].eal = mfc_ea2l(VE + i * 128);
-		dma_list[5].eal = mfc_ea2l(VF + i * 128);
-		dma_list[6].eal = mfc_ea2l(VG + i * 128);
-		dma_list[7].eal = mfc_ea2l(VH + i * 128);
-		mfc_putl(&Z[0], scratch, &dma_list[0], 8 * sizeof(mfc_list_element_t), tag1, 0, 0);
-		salsa20_8_xor4(&XA->q[0], &XA->q[4], &XB->q[0], &XB->q[4], &XC->q[0], &XC->q[4], &XD->q[0], &XD->q[4]);
-		salsa20_8_xor4(&XA->q[4], &XA->q[0], &XB->q[4], &XB->q[0], &XC->q[4], &XC->q[0], &XD->q[4], &XD->q[0]);
-		salsa20_8_xor4(&XE->q[0], &XE->q[4], &XF->q[0], &XF->q[4], &XG->q[0], &XG->q[4], &XH->q[0], &XH->q[4]);
-		salsa20_8_xor4(&XE->q[4], &XE->q[0], &XF->q[4], &XF->q[0], &XG->q[4], &XG->q[0], &XH->q[4], &XH->q[0]);
-		mfc_write_tag_mask(tag_mask1);
-		mfc_read_tag_status_all();
-	}
+	do {
+		uint32x4 dma_vect_list[4] = {
+			{
+				128, mfc_ea2l(scratch + 128 * 1024 * 0),
+				128, mfc_ea2l(scratch + 128 * 1024 * 1)
+			},
+			{
+				128, mfc_ea2l(scratch + 128 * 1024 * 2),
+				128, mfc_ea2l(scratch + 128 * 1024 * 3)
+			},
+			{
+				128, mfc_ea2l(scratch + 128 * 1024 * 4) - 128,
+				128, mfc_ea2l(scratch + 128 * 1024 * 5) - 128
+			},
+			{
+				128, mfc_ea2l(scratch + 128 * 1024 * 6) - 128,
+				128, mfc_ea2l(scratch + 128 * 1024 * 7) - 128
+			}
+		};
+		uint32x4 dma_vect_step = { 0, 128, 0, 128 };
+		uint32_t scratch_eahi = mfc_ea2h(scratch);
+		scrypt_spu_loop1((uint32x4 *)XA, dma_vect_list, dma_vect_step, scratch_eahi,
+				  tag1, tag_mask1, tag2, tag_mask2);
+	} while (0);
 
 	dma_list[0].eal = mfc_ea2l(VA + (XA->w[16] & 1023) * 128); /* j <-- Integerify(X) mod N */
 	dma_list[1].eal = mfc_ea2l(VB + (XB->w[16] & 1023) * 128); /* j <-- Integerify(X) mod N */
@@ -253,8 +335,7 @@ scrypt_spu_core8(uint32_t *databuf32, uint64_t scratch)
 		blkxor128(XB->q, &Y[1 * 8]);
 		blkxor128(XC->q, &Y[2 * 8]);
 		blkxor128(XD->q, &Y[3 * 8]);
-		salsa20_8_xor4(&XA->q[0], &XA->q[4], &XB->q[0], &XB->q[4], &XC->q[0], &XC->q[4], &XD->q[0], &XD->q[4]);
-		salsa20_8_xor4(&XA->q[4], &XA->q[0], &XB->q[4], &XB->q[0], &XC->q[4], &XC->q[0], &XD->q[4], &XD->q[0]);
+		salsa20_8_xor4d(&XA->q[0]);
 
 		dma_list[0].eal = mfc_ea2l(VA + (XA->w[16] & 1023) * 128); /* j <-- Integerify(X) mod N */
 		dma_list[1].eal = mfc_ea2l(VB + (XB->w[16] & 1023) * 128); /* j <-- Integerify(X) mod N */
@@ -268,8 +349,7 @@ scrypt_spu_core8(uint32_t *databuf32, uint64_t scratch)
 		blkxor128(XF->q, &Y[5 * 8]);
 		blkxor128(XG->q, &Y[6 * 8]);
 		blkxor128(XH->q, &Y[7 * 8]);
-		salsa20_8_xor4(&XE->q[0], &XE->q[4], &XF->q[0], &XF->q[4], &XG->q[0], &XG->q[4], &XH->q[0], &XH->q[4]);
-		salsa20_8_xor4(&XE->q[4], &XE->q[0], &XF->q[4], &XF->q[0], &XG->q[4], &XG->q[0], &XH->q[4], &XH->q[0]);
+		salsa20_8_xor4d(&XE->q[0]);
 
 		dma_list[4].eal = mfc_ea2l(VE + (XE->w[16] & 1023) * 128); /* j <-- Integerify(X) mod N */
 		dma_list[5].eal = mfc_ea2l(VF + (XF->w[16] & 1023) * 128); /* j <-- Integerify(X) mod N */

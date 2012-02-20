@@ -22,10 +22,11 @@ minerd_CPPFLAGS = @LIBCURL_CPPFLAGS@
 
 if HAVE_CELL_SPU
 
-scrypt-cell-spu.o: scrypt-cell-spu.c sha256-helpers.h \
-		   scrypt-simd-helpers.h scrypt-cell-spu.h
+scrypt-cell-spu.o: scrypt-cell-spu.c scrypt-cell-spu-asm.S \
+		   sha256-helpers.h scrypt-simd-helpers.h \
+		   scrypt-cell-spu.h
 	$(SPU_ELF_GCC) -O3 -fstrict-aliasing -Wall -Wstrict-aliasing \
-		       -o scrypt-cell-spu.elf scrypt-cell-spu.c
+		       -o scrypt-cell-spu.elf scrypt-cell-spu.c scrypt-cell-spu-asm.S
 	$(EMBEDSPU) scrypt_spu scrypt-cell-spu.elf scrypt-cell-spu.o
 
 minerd_LDADD += scrypt-cell-spu.o @SPE2_LIBS@
