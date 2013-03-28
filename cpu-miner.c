@@ -910,8 +910,8 @@ int main (int argc, char *argv[])
 		openlog("cpuminer", LOG_PID, LOG_USER);
 #endif
 
-	work_restart = calloc(opt_n_threads, sizeof(*work_restart));
-	if (!work_restart)
+	if (posix_memalign(&work_restart, 128,
+			   sizeof(*work_restart) * opt_n_threads))
 		return 1;
 
 	thr_info = calloc(opt_n_threads + 2, sizeof(*thr));
