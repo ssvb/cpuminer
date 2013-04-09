@@ -910,7 +910,7 @@ int main (int argc, char *argv[])
 		openlog("cpuminer", LOG_PID, LOG_USER);
 #endif
 
-	if (posix_memalign(&work_restart, 128,
+	if (posix_memalign((void **)&work_restart, 128,
 			   sizeof(*work_restart) * opt_n_threads))
 		return 1;
 

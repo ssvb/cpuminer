@@ -43,7 +43,7 @@
 
 /*****************************************************************************/
 
-static __attribute__((always_inline)) void
+static inline __attribute__((always_inline)) void
 salsa20_8_xor4(uint32x4 * __restrict B, const uint32x4 * __restrict Bx,
                uint32x4 * __restrict C, const uint32x4 * __restrict Cx,
                uint32x4 * __restrict D, const uint32x4 * __restrict Dx,
@@ -167,7 +167,7 @@ void scrypt_spu_loop1_asm(uint32x4 * data,
                              int        tag2,
                              int        tag_mask2);
 
-static __attribute__((always_inline)) void
+static inline __attribute__((always_inline)) void
 salsa20_8_xor4d(uint32x4 * data)
 {
 	salsa20_8_xor4(&data[0],  &data[4],  &data[8],  &data[12],
@@ -178,14 +178,14 @@ salsa20_8_xor4d(uint32x4 * data)
 
 static mfc_list_element_t dma_list[8] __attribute__((aligned(128)));
 
-static void scrypt_spu_loop1(uint32x4 * data,
-                             uint32x4 * dma_vect_list,
-                             uint32x4   dma_vect_step,
-                             uint64_t   scratch_eahi,
-                             int        tag1,
-                             int        tag_mask1,
-                             int        tag2,
-                             int        tag_mask2)
+void scrypt_spu_loop1(uint32x4 * data,
+                      uint32x4 * dma_vect_list,
+                      uint32x4   dma_vect_step,
+                      uint64_t   scratch_eahi,
+                      int        tag1,
+                      int        tag_mask1,
+                      int        tag2,
+                      int        tag_mask2)
 {
 	static uint32x4 Z[8 * 8] __attribute__((aligned(128)));
 	int i;

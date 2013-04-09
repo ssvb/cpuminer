@@ -78,7 +78,7 @@ typedef uint8_t uint8x16 __attribute__ ((vector_size(16), aligned(16)));
  * Define two helper functions ('rol_32x4' and 'shuffle_32x4') to ensure
  * better support for old gcc versions and gcc-compatible compilers
  */
-static __attribute__((always_inline)) uint32x4
+static inline __attribute__((always_inline)) uint32x4
 rol_32x4(uint32x4 a, uint32_t b)
 {
 #ifdef __ALTIVEC__
@@ -100,7 +100,7 @@ rol_32x4(uint32x4 a, uint32_t b)
 # define shuffle_32x4(a, p1, p2, p3, p4) \
 	(uint32x4)_mm_shuffle_epi32((__m128i)a, _MM_SHUFFLE(p4, p3, p2, p1))
 #else
-static __attribute__((always_inline)) uint32x4
+static inline __attribute__((always_inline)) uint32x4
 shuffle_32x4(uint32x4 a, const int p1, const int p2, const int p3, const int p4)
 {
 #if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
@@ -131,14 +131,14 @@ shuffle_32x4(uint32x4 a, const int p1, const int p2, const int p3, const int p4)
 
 /*****************************************************************************/
 
-static __attribute__((always_inline)) void
+static inline __attribute__((always_inline)) void
 blkcpy128(uint32x4 * __restrict D, const uint32x4 * __restrict S)
 {
 	D[0] = S[0]; D[1] = S[1]; D[2] = S[2]; D[3] = S[3];
 	D[4] = S[4]; D[5] = S[5]; D[6] = S[6]; D[7] = S[7];
 }
 
-static __attribute__((always_inline)) void
+static inline __attribute__((always_inline)) void
 blkxor128(uint32x4 * __restrict D, const uint32x4 * __restrict S)
 {
 	D[0] ^= S[0]; D[1] ^= S[1]; D[2] ^= S[2]; D[3] ^= S[3];
@@ -149,7 +149,7 @@ blkxor128(uint32x4 * __restrict D, const uint32x4 * __restrict S)
  * salsa20_8(B):
  * Apply the salsa20/8 core to the provided block.
  */
-static __attribute__((always_inline)) void
+static inline __attribute__((always_inline)) void
 salsa20_8_xor(uint32x4 * __restrict B, const uint32x4 * __restrict Bx)
 {
 	uint32x4 X0, X1, X2, X3;
@@ -190,7 +190,7 @@ salsa20_8_xor(uint32x4 * __restrict B, const uint32x4 * __restrict Bx)
 	B[3] += X3;
 }
 
-static __attribute__((always_inline)) void
+static inline __attribute__((always_inline)) void
 salsa20_8_xor2(uint32x4 * __restrict B, const uint32x4 * __restrict Bx,
                uint32x4 * __restrict C, const uint32x4 * __restrict Cx)
 {
