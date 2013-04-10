@@ -1,7 +1,13 @@
 
-This is a multi-threaded CPU miner for Tenebrix, fork of Jeff Garzik's refernce cpuminer.
-New, GPU-hostile / CPU-friendly PoW is implemented.  
+This is a multi-threaded Cell BE optimized miner for Litecoin,
+fork of Jeff Garzik's reference cpuminer.
 
+Miner threads are first allocated to the available SPU cores (typically 6).
+The remaining threads are allocated to PPU. There will be usually 8 threads
+total on PS3: 6 SPU threads and 2 PPU threads.
+
+The mining performance comparison table can be found at:
+    https://github.com/litecoin-project/litecoin/wiki/Mining-hardware-comparison
 
 
 License: GPLv2.  See COPYING for details.
@@ -9,25 +15,11 @@ License: GPLv2.  See COPYING for details.
 Dependencies:
 	libcurl			http://curl.haxx.se/libcurl/
 	jansson			http://www.digip.org/jansson/
-		(jansson is optional, and is included in-tree)
+		(jansson is included in-tree)
 
 Basic *nix build instructions:
 	./autogen.sh	# only needed if building from git repo
-	CFLAGS="-O3 -Wall -msse2" ./configure
+	CFLAGS="-O3 -mcpu=cell -fstrict-aliasing" ./configure
 	make
-
-Basic WIN32 build instructions (on Fedora 13; requires mingw32):
-	./autogen.sh	# only needed if building from git repo
-	rm -f mingw32-config.cache
-	MINGW32_CFLAGS="-O3 -Wall -msse2" mingw32-configure
-	make
-	./mknsis.sh
 
 Usage instructions:  Run "minerd --help" to see options.
-
-REMEMBER - ONLY scrypt ALGORITHM WORKS FOR TENEBRIX !
-
-Also many issues and FAQs are covered in the forum thread
-dedicated to this program,
-	http://www.bitcoin.org/smf/index.php?topic=1925.0;all
-
